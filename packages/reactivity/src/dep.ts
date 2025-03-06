@@ -12,41 +12,49 @@ import {
 } from './effect'
 
 /**
- * Incremented every time a reactive change happens
- * This is used to give computed a fast path to avoid re-compute when nothing
- * has changed.
+ * 每次发生响应式变化时递增
+ * 用于为 computed 提供快速路径，避免在未更改时重新计算。
  */
 export let globalVersion = 0
 
 /**
- * Represents a link between a source (Dep) and a subscriber (Effect or Computed).
- * Deps and subs have a many-to-many relationship - each link between a
- * dep and a sub is represented by a Link instance.
+ * 表示源（Dep）和订阅者（Effect 或 Computed）之间的链接。
+ * Deps 和 subs 之间具有多对多关系 - 每个 dep 和 sub 之间的链接由 Link 实例表示。
  *
- * A Link is also a node in two doubly-linked lists - one for the associated
- * sub to track all its deps, and one for the associated dep to track all its
- * subs.
+ * Link 也是两个双向链表中的一个节点 - 一个用于跟踪其所有 deps 的关联 sub，
+ * 一个用于跟踪其所有 subs 的关联 dep。
  *
  * @internal
  */
 export class Link {
   /**
-   * - Before each effect run, all previous dep links' version are reset to -1
-   * - During the run, a link's version is synced with the source dep on access
-   * - After the run, links with version -1 (that were never used) are cleaned
-   *   up
+   * - 在每次 effect 运行之前，所有之前的 dep 链接的版本都被重置为 -1
+   * - 在运行期间，一个链接的版本与访问的源 dep 同步
+   * - 在运行之后，版本为 -1 的链接（从未使用过）被清理
    */
   version: number
 
   /**
-   * Pointers for doubly-linked lists
+   * 双向链表的指针
    */
-  nextDep?: Link
-  prevDep?: Link
-  nextSub?: Link
-  prevSub?: Link
-  prevActiveLink?: Link
+  nextDep?: Link // 指向后一个依赖
+  prevDep?: Link // 指向前一个依赖
+  nextSub?: Link // 指向后一个订阅者
+  prevSub?: Link // 指向前一个订阅者
+  prevActiveLink?: Link // 指向前一个活动链接
 
+  /**
+   *
+   * @param sub 订阅者
+   * @param dep 依赖
+   *
+   * @example
+   * ```typescript
+   * const dep = new Dep()
+   * const sub = new Subscriber()
+   * const link = new Link(sub, dep)
+   * ```
+   */
   constructor(
     public sub: Subscriber,
     public dep: Dep,
@@ -202,8 +210,8 @@ function addSub(link: Link) {
   link.dep.sc++
   if (link.sub.flags & EffectFlags.TRACKING) {
     const computed = link.dep.computed
-    // computed getting its first subscriber
-    // enable tracking + lazily subscribe to all its deps
+    // computed 获取其第一个订阅者
+    // 启用跟踪 + 惰性订阅所有其依赖
     if (computed && !link.dep.subs) {
       computed.flags |= EffectFlags.TRACKING | EffectFlags.DIRTY
       for (let l = computed.deps; l; l = l.nextDep) {
@@ -225,10 +233,9 @@ function addSub(link: Link) {
   }
 }
 
-// The main WeakMap that stores {target -> key -> dep} connections.
-// Conceptually, it's easier to think of a dependency as a Dep class
-// which maintains a Set of subscribers, but we simply store them as
-// raw Maps to reduce memory overhead.
+// 存储 {target -> key -> dep} 连接的主 WeakMap。
+// 从概念上讲，更容易将依赖看作一个 Dep 类，
+// 它维护一个订阅者集合，但我们只是存储它们作为原始 Map 以减少内存开销。
 type KeyToDepMap = Map<any, Dep>
 
 export const targetMap: WeakMap<object, KeyToDepMap> = new WeakMap()
@@ -244,21 +251,25 @@ export const ARRAY_ITERATE_KEY: unique symbol = Symbol(
 )
 
 /**
- * Tracks access to a reactive property.
+ * 跟踪对响应式属性的访问。
  *
- * This will check which effect is running at the moment and record it as dep
- * which records all effects that depend on the reactive property.
+ * 这将检查当前正在运行的 effect 并将其记录为依赖，
+ * 该依赖记录所有依赖于响应式属性的 effect。
  *
- * @param target - Object holding the reactive property.
- * @param type - Defines the type of access to the reactive property.
+ * @param target - 持有响应式属性的对象。
+ * @param type - 定义对响应式属性的访问类型。
  * @param key - Identifier of the reactive property to track.
  */
 export function track(target: object, type: TrackOpTypes, key: unknown): void {
+  // shouldTrack：全局标志，表示是否应该进行追踪
+  // activeSub：当前活动的订阅者（通常是正在执行的 effect）
   if (shouldTrack && activeSub) {
+    // 获取或创建目标对象的依赖映射
     let depsMap = targetMap.get(target)
     if (!depsMap) {
       targetMap.set(target, (depsMap = new Map()))
     }
+    // 获取或创建特定属性的依赖集合
     let dep = depsMap.get(key)
     if (!dep) {
       depsMap.set(key, (dep = new Dep()))
@@ -278,12 +289,11 @@ export function track(target: object, type: TrackOpTypes, key: unknown): void {
 }
 
 /**
- * Finds all deps associated with the target (or a specific property) and
- * triggers the effects stored within.
+ * 查找与目标（或特定属性）关联的所有依赖项，并触发存储的 effects。
  *
- * @param target - The reactive object.
- * @param type - Defines the type of the operation that needs to trigger effects.
- * @param key - Can be used to target a specific reactive property in the target object.
+ * @param target - 响应式对象。
+ * @param type - 定义需要触发 effects 的操作类型。
+ * @param key - 可以用于定位目标对象中的特定响应式属性。
  */
 export function trigger(
   target: object,

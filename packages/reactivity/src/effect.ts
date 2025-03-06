@@ -40,7 +40,7 @@ export let activeSub: Subscriber | undefined
 
 export enum EffectFlags {
   /**
-   * ReactiveEffect only
+   * ReactiveEffect 独有
    */
   ACTIVE = 1 << 0,
   RUNNING = 1 << 1,
@@ -52,16 +52,16 @@ export enum EffectFlags {
 }
 
 /**
- * Subscriber is a type that tracks (or subscribes to) a list of deps.
+ * Subscriber 是一个类型，用于跟踪（或订阅）一组 deps。
  */
 export interface Subscriber extends DebuggerOptions {
   /**
-   * Head of the doubly linked list representing the deps
+   * 双向链表的头，表示 deps
    * @internal
    */
   deps?: Link
   /**
-   * Tail of the same list
+   * 双向链表的尾，表示 deps
    * @internal
    */
   depsTail?: Link
@@ -74,8 +74,7 @@ export interface Subscriber extends DebuggerOptions {
    */
   next?: Subscriber
   /**
-   * returning `true` indicates it's a computed that needs to call notify
-   * on its dep too
+   * 返回 `true` 表示它是一个 computed，需要在其 dep 上通知
    * @internal
    */
   notify(): true | void
@@ -151,7 +150,7 @@ export class ReactiveEffect<T = any>
     // TODO cleanupEffect
 
     if (!(this.flags & EffectFlags.ACTIVE)) {
-      // stopped during cleanup
+      // 在清理期间停止
       return this.fn()
     }
 
@@ -216,7 +215,7 @@ export class ReactiveEffect<T = any>
 }
 
 /**
- * For debugging
+ * 用于调试
  */
 // function printDeps(sub: Subscriber) {
 //   let d = sub.deps
@@ -255,7 +254,7 @@ export function startBatch(): void {
 }
 
 /**
- * Run batched effects when all batches have ended
+ * 当所有批处理结束时运行批处理效果
  * @internal
  */
 export function endBatch(): void {

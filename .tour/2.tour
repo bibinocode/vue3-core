@@ -1,0 +1,56 @@
+{
+  "$schema": "https://aka.ms/codetour-schema",
+  "title": "2.响应式模块",
+  "steps": [
+    {
+      "file": "packages/reactivity/src/reactive.ts",
+      "description": "1. 进来必然先看 `reactive` 对象,通过reactive去实现proxy代理收集依赖\n2. 需要注意的边界问题很多：\n  - 需要判断传入的参数是否是对象，如果不是那么直接返回就好了\n  - 如果对象已经被代理Proxy了，无需再次被代理（直接取出缓存）这里涉及到内存的优化管理 `WeakMap`\n  - 如果是Proxy代理对象，无需再次被代理\n  - 如果原始对象中有get，set访问器属性怎么处理\n  - 原始对象的属性有嵌套的情况\n  - 如果使用in 关键字检查一个属性是否存在于对象中，如何处理\n  - 如果是遍历操作如何处理？\n  - 新增、修改与删除不同动作的处理\n  - 数组长度问题的处理\n  - `readonly` 的处理\n  - `shallow` 浅层代理",
+      "line": 93
+    },
+    {
+      "file": "packages/reactivity/src/reactive.ts",
+      "description": "这里是处理 `readonly`",
+      "line": 96
+    },
+    {
+      "file": "packages/reactivity/src/reactive.ts",
+      "description": "`isReadonly` 判断，如果target上 有 `__v_isReadonly` 标志位,那么就是只读的类型",
+      "line": 348
+    },
+    {
+      "file": "packages/reactivity/src/reactive.ts",
+      "description": "这里将Proxy代理细化抽离出去,后面每个配置项都是单独分开的",
+      "line": 99
+    },
+    {
+      "file": "packages/reactivity/src/reactive.ts",
+      "description": "需要判断传入的参数是否是对象，如果是 raw值 直接返回就行",
+      "line": 275
+    },
+    {
+      "file": "packages/reactivity/src/effect.ts",
+      "description": "`ReactiveEffect` 用于追踪管理响应式依赖，当响应式数据发生变化时，收集的handler会被重新执行。\n\n1. 主要通过`deps`链表结构收集依赖和追踪依赖\n2. 批量更新处理通过`batch` 、`startBatch`、`endBatch` 实现\n3. 清理机制 `cleanupEffect`、`cleanupDeps`\n4. 暂停/恢复追踪功能 `pauseTracking`、`enableTracking`\n\n重要功能：`scheduling`调度！！！\n\n这个实现是 Vue 3 响应式系统的基石，使得 Vue 能够精确地追踪数据变化并触发相应的更新。它采用了一个复杂但高效的依赖追踪系统，通过双向链表结构来管理依赖关系，并支持批量更新以提高性能。",
+      "line": 86
+    },
+    {
+      "file": "packages/reactivity/src/dep.ts",
+      "description": "双向链表的实现：是一种数据结构，其中每个节点包含：\n1. 数据本身\n2. 指向前一个节点的指针（prev）\n3. 指向后一个节点的指针（next）\n\nnull ← Node1 ⇄ Node2 ⇄ Node3 → null\n      prev/next  prev/next",
+      "line": 32
+    },
+    {
+      "file": "packages/reactivity/src/dep.ts",
+      "description": "1. 收集依赖（track）方法：",
+      "line": 267
+    },
+    {
+      "file": "packages/reactivity/src/dep.ts",
+      "description": "2. 触发更新时 `notify` 方法",
+      "line": 178
+    },
+    {
+      "file": "packages/reactivity/src/dep.ts",
+      "description": "3. 添加订阅者时",
+      "line": 212
+    }
+  ]
+}
