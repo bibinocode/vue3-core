@@ -25,19 +25,26 @@ import {
 import { isRef } from './ref'
 import { warn } from './warning'
 
+// 用于标识不需要追踪的特殊属性
 const isNonTrackableKeys = /*@__PURE__*/ makeMap(`__proto__,__v_isRef,__isVue`)
 
+// 内置符号集合
+// 获取到如 Symbol.iterator Symbol.toStringTag Symbol.toPrimitive 等内置符号
+// 在 Vue 的响应式系统中，这个集合用于识别那些不需要进行依赖追踪的特殊 Symbol 属性。当访问对象的某个属性是内置 Symbol 时，Vue 不会对其进行依赖追踪，这是因为：
+// 这些内置 Symbol 通常用于 JavaScript 引擎内部操作,它们很少会在响应式更新中发生变化
+// 对它们进行依赖追踪会增加不必要的性能开销
 const builtInSymbols = new Set(
   /*@__PURE__*/
   Object.getOwnPropertyNames(Symbol)
-    // ios10.x Object.getOwnPropertyNames(Symbol) can enumerate 'arguments' and 'caller'
-    // but accessing them on Symbol leads to TypeError because Symbol is a strict mode
-    // function
+    // 过滤掉 'arguments' 和 'caller' 这两个特殊属性（在 iOS 10.x 上会出现问题）
     .filter(key => key !== 'arguments' && key !== 'caller')
+    // 将属性名转换为实际的 Symbol 值
     .map(key => Symbol[key as keyof SymbolConstructor])
+    // 确保只保留真正的 Symbol 类型值
     .filter(isSymbol),
 )
 
+// 重写了对象的 hasOwnProperty 方法，使其能够正确追踪依赖
 function hasOwnProperty(this: object, key: unknown) {
   // #10455 hasOwnProperty may be called with non-string values
   if (!isSymbol(key)) key = String(key)
@@ -46,14 +53,28 @@ function hasOwnProperty(this: object, key: unknown) {
   return obj.hasOwnProperty(key as string)
 }
 
-// 基础的Proxy处理器
-// 接收两个参数  是否是只读的  是否是浅响应式的
+/**
+ * 基础处理器
+ * 接收两个参数：是否是只读的、是否是浅响应式的
+ */
 class BaseReactiveHandler implements ProxyHandler<Target> {
   constructor(
     protected readonly _isReadonly = false, // 是否只读
     protected readonly _isShallow = false, // 是否浅响应式
   ) {}
 
+  /**
+   * 获取代理对象的属性值
+   * @param target 目标对象
+   * @param key 属性名
+   * @param receiver 代理对象
+   * @returns 属性值
+   * 1. 特殊标志位处理，检查 __v_skip、__v_isReactive、__v_isReadonly 等特殊属性 处理toRaw方法获取原始对象
+   * 2. 对数组的特殊方法（如 includes、push 等）进行重写，确保依赖追踪正常工作
+   * 3. 费制度对象只能调用track函数收集依赖
+   * 4. 如果返回值是对象且不是浅响应式，会递归地将其转换为响应式对象
+   * 5. 自动解包 ref 对象（数组的整数索引除外）
+   */
   get(target: Target, key: string | symbol, receiver: object): any {
     /**
      * 如果key是__v_skip，则返回target['__v_skip']，
@@ -152,14 +173,14 @@ class BaseReactiveHandler implements ProxyHandler<Target> {
     }
 
     if (isRef(res)) {
-      // ref unwrapping - skip unwrap for Array + integer key.
+      // 用解包 - 跳过对数组和整数键的解包操作。
       return targetIsArray && isIntegerKey(key) ? res : res.value
     }
 
     if (isObject(res)) {
-      // Convert returned value into a proxy as well. we do the isObject check
-      // here to avoid invalid value warning. Also need to lazy access readonly
-      // and reactive here to avoid circular dependency.
+      // 同样将返回值转换为代理。我们会进行是否为对象的检查。
+      // 在这里避免无效值警告。还需要惰性访问只读属性。
+      // 并且在这里使用响应式（reactive）以避免循环依赖。
       return isReadonly ? readonly(res) : reactive(res)
     }
 
@@ -172,6 +193,12 @@ class MutableReactiveHandler extends BaseReactiveHandler {
     super(false, isShallow)
   }
 
+  /**
+   * 设置代理对象的属性值
+   * @param target 目标对象
+   * @param key 属性名
+   * @param value 属性值
+   */
   set(
     target: Record<string | symbol, unknown>,
     key: string | symbol,
@@ -218,6 +245,12 @@ class MutableReactiveHandler extends BaseReactiveHandler {
     return result
   }
 
+  /**
+   * 删除代理对象的属性
+   * @param target 目标对象
+   * @param key 属性名
+   * @returns 是否删除成功
+   */
   deleteProperty(
     target: Record<string | symbol, unknown>,
     key: string | symbol,
@@ -231,6 +264,7 @@ class MutableReactiveHandler extends BaseReactiveHandler {
     return result
   }
 
+  // 检查属性是否存在 也就是 in 操作符的实现
   has(target: Record<string | symbol, unknown>, key: string | symbol): boolean {
     const result = Reflect.has(target, key)
     if (!isSymbol(key) || !builtInSymbols.has(key)) {
@@ -239,16 +273,25 @@ class MutableReactiveHandler extends BaseReactiveHandler {
     return result
   }
 
+  /**
+   * 获取代理对象的属性名
+   * @param target 目标对象
+   * @returns 属性名
+   */
   ownKeys(target: Record<string | symbol, unknown>): (string | symbol)[] {
     track(
       target,
       TrackOpTypes.ITERATE,
       isArray(target) ? 'length' : ITERATE_KEY,
     )
+    // 获取对象自身所有属性的实现
     return Reflect.ownKeys(target)
   }
 }
 
+/**
+ * 制度响应式代码处理
+ */
 class ReadonlyReactiveHandler extends BaseReactiveHandler {
   constructor(isShallow = false) {
     super(true, isShallow)
@@ -275,17 +318,26 @@ class ReadonlyReactiveHandler extends BaseReactiveHandler {
   }
 }
 
+/**
+ * 可变响应式对象的处理器
+ */
 export const mutableHandlers: ProxyHandler<object> =
   /*@__PURE__*/ new MutableReactiveHandler()
 
+/**
+ * 只读响应式对象的处理器
+ */
 export const readonlyHandlers: ProxyHandler<object> =
   /*@__PURE__*/ new ReadonlyReactiveHandler()
 
+/**
+ * 浅层可变响应式对象的处理器
+ */
 export const shallowReactiveHandlers: MutableReactiveHandler =
   /*@__PURE__*/ new MutableReactiveHandler(true)
 
-// Props handlers are special in the sense that it should not unwrap top-level
-// refs (in order to allow refs to be explicitly passed down), but should
-// retain the reactivity of the normal readonly object.
+/**
+ * 浅层只读响应式对象的处理器
+ */
 export const shallowReadonlyHandlers: ReadonlyReactiveHandler =
   /*@__PURE__*/ new ReadonlyReactiveHandler(true)
