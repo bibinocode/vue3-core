@@ -205,40 +205,54 @@ class MutableReactiveHandler extends BaseReactiveHandler {
     value: unknown,
     receiver: object,
   ): boolean {
+    // 获取属性的旧值
+    // 在浅响应式模式下，对象会按原样设置，不管是否是响应式的
     let oldValue = target[key]
+    // 如果不是浅响应式模式(!this._isShallow)：
     if (!this._isShallow) {
+      // 检查旧值是否是只读的
       const isOldValueReadonly = isReadonly(oldValue)
+      // 如果新值不是浅响应式且不是只读的，则获取旧值和新值的原始对象
       if (!isShallow(value) && !isReadonly(value)) {
         oldValue = toRaw(oldValue)
         value = toRaw(value)
       }
+      // 处理特殊情况：如果目标不是数组，旧值是ref但新值不是ref，则直接设置ref的value属性
       if (!isArray(target) && isRef(oldValue) && !isRef(value)) {
+        // 如果旧值是只读的，则拒绝修改并返回false
         if (isOldValueReadonly) {
           return false
         } else {
+          // 否则，更新ref的值并返回true
           oldValue.value = value
           return true
         }
       }
     } else {
-      // in shallow mode, objects are set as-is regardless of reactive or not
+      // 浅响应式模式 (this.isShallow === true)在浅响应式模式下，代码会跳过toRaw的处理，直接使用传入的值，不管它是否是响应式的
     }
 
+    // 判断目标对象是否已经拥有这个键
+    // 如果目标是数组且键是整数，则检查键是否小于数组长度
+    // 否则，使用hasOwn函数检查目标对象是否拥有该属性
     const hadKey =
       isArray(target) && isIntegerKey(key)
         ? Number(key) < target.length
         : hasOwn(target, key)
+    // 先设置值，再触发更新
     const result = Reflect.set(
       target,
       key,
       value,
       isRef(target) ? target : receiver,
     )
-    // don't trigger if target is something up in the prototype chain of original
+    // 首先检查目标是否是接收者的原始对象（防止原型链上的操作触发更新）
     if (target === toRaw(receiver)) {
       if (!hadKey) {
+        // 如果键之前不存在，触发ADD操作类型的更新
         trigger(target, TriggerOpTypes.ADD, key, value)
       } else if (hasChanged(value, oldValue)) {
+        // 如果键存在且值发生了变化，触发SET操作类型的更新
         trigger(target, TriggerOpTypes.SET, key, value, oldValue)
       }
     }
